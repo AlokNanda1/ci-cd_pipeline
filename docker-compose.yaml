@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    environment:
+      SA_PASSWORD: "YourStrong!Passw0rd"
+      ACCEPT_EULA: "Y"
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - mynet
+
+  mssql-tools:
+    image: mcr.microsoft.com/mssql-tools:latest
+    restart: "no"
+    command: /bin/bash -c "sleep 30; /opt/mssql-tools/bin/sqlcmd -S sqlserver -U sa -P 'YourStrong!Passw0rd' -i /docker-entrypoint-initdb.d/init.sql"
+    depends_on:
+      - sqlserver
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - mynet
+
+  myapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5049:5049"
+      - "7040:7040"
+    depends_on:
+      - sqlserver
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=CsmDB;User=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True
+      - ASPNETCORE_ENVIRONMENT=DockerSql
+      - ASPNETCORE_URLS=http://+:5049
+    networks:
+      - mynet
+
+networks:
+  mynet:
+    driver: bridge

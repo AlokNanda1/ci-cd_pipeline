@@ -1,0 +1,43 @@
+﻿@page
+@model CSM_Dummy.Pages.IndexModel
+@{
+    ViewData["Title"] = "User List";
+}
+
+<div ng-app="userApp" ng-controller="UserController">
+    <h1>User List</h1>
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>User ID</th>
+                <th>User Name</th>
+                <th>Email</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var user in Model.Users)
+            {
+                <tr>
+                    <td>@user.UserID</td>
+                    <td>@user.UserName</td>
+                    <td>@user.Email</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@section Scripts {
+    <script>
+        var app = angular.module('userApp', []);
+        app.controller('UserController', function ($scope, $http) {
+            $scope.users = [];
+
+            $http.get('/Users/GetUsers')
+                .then(function (response) {
+                    $scope.users = response.data;
+                });
+        });
+        console.log('This is the Index page.');
+    </script>
+}

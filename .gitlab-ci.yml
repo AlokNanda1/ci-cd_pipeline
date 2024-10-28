@@ -1,0 +1,96 @@
+stages:
+  - build
+  - test
+  - analyze
+  - cleanup
+
+variables:
+  REPO_URL: "http://Alok54:AuzGKeP5ZQKsdXf-_-js@gitlabci.cybraintech.com/qa-automation-testing/csm-cicd.git"
+  TEST_REPO_URL: "http://Alok54:TwmUKBzG9GkKiF_TxZmE@gitlabci.cybraintech.com/qa-automation-testing/csm-automation.git"
+  IMAGE_TAG: "myapp:latest"  # Adjust the tag as needed
+  SONARQUBE_URL: "http://49.13.0.244:9000"
+  SONARQUBE_TOKEN: "sqa_b1e13b76984b2fc2431d651d9ceb77ea03995cb5"
+  SONARQUBE_PROJECT_KEY: "csm_ci"
+
+build_job:
+  stage: build
+  tags:
+    - docker runner  # Ensure a runner with this tag is available on your server
+  before_script:
+    - echo "Starting build process on server"
+  script:
+    - git clone $REPO_URL
+    - echo "Building and deploying the application"
+    - cd csm-cicd
+    - rm -rf .git
+    - dotnet build
+    - dotnet publish -o publish
+    - echo "Files in publish directory:"
+    - ls -l publish
+    - cd publish
+    - nohup dotnet "CSM Dummy.dll" > app.log 2>&1 & # Use the correct filename here
+    #- curl -I http://49.13.0.244:5049 || exit 1
+  artifacts:
+    paths:
+      - csm-cicd/publish
+    expire_in: 1 hour
+
+test_job:
+  stage: test
+  tags:
+    - docker runner  # Ensure a runner with this tag is available on your server
+  before_script:
+    - echo "Starting test process on server"  # Informative message using echo
+    - docker version  # Check Docker daemon information
+    - docker pull aerokube/selenoid:latest  # Pull Selenoid Docker image
+    - docker pull aerokube/selenoid-ui:latest  # Pull Selenoid UI Docker image
+    - docker pull selenoid/vnc:chrome_117.0  # Pull specific browser Docker image
+    - docker pull selenoid/vnc:firefox_112.0  # Pull specific browser Docker image
+  script:
+    - echo "Cloning test automation repository"
+    - git clone http://Alok54:TwmUKBzG9GkKiF_TxZmE@gitlabci.cybraintech.com/qa-automation-testing/csm-automation.git
+    #- cd csm-automation-test
+    - echo "Starting Selenium with Docker Compose"
+    - docker-compose up -d  # Start Selenium in detached mode
+    - echo "Running tests on the latest build"
+    - docker run --rm -d -v "$(pwd):/tests" myapp:latest ./run_tests.sh -suiteXmlFile /csm-automation/src/test/resources/testrunners/testng_runner.xml
+
+analyze_job:
+  stage: analyze
+  tags:
+    - docker runner
+  image:
+    name: sonarsource/sonar-scanner-cli:latest  # Use the official SonarQube Scanner Docker image
+    entrypoint: [""]
+  dependencies:
+    - build_job
+  before_script:
+    - echo "Starting SonarQube analysis"
+  script:
+    - cd csm-cicd  # Navigate to the directory containing your source code
+    - sonar-scanner \
+        -Dsonar.projectKey=$SONARQUBE_PROJECT_KEY \
+        -Dsonar.sources=. \
+        -Dsonar.host.url=$SONARQUBE_HOST \
+        -Dsonar.login=$SONARQUBE_TOKEN \
+        -Dsonar.cs.vscoveragexml.reportsPaths=**/*.coveragexml \
+        -Dsonar.cs.opencover.reportsPaths=**/*.opencover.xml \
+        -Dsonar.dotnet.key.generation.strategy=reuseExisting \
+        -Dsonar.verbose=true  # Enable verbose logging for more details
+  allow_failure: true  # Optional: allow the job to fail without failing the pipeline
+  only:
+    - main  # Run this job only on the main branch
+
+
+cleanup_job:
+  stage: cleanup
+  script:
+    - echo "Cleaning up current project processes"
+    - pkill -f 'dotnet myapp.dll' || true  # Kill the running application process
+    - echo "Cleaning up current project files"
+    - rm -rf csm-cicd
+    - rm -rf csm-automation
+  tags:
+    - docker runner  # Ensure a runner with this tag is available on your server
+  only:
+    - main  # Only run this job on the main branch
